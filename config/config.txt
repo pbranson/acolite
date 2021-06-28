@@ -1,29 +1,29 @@
 ## ACOLITE
-defaults=config/defaults.txt
+defaults=/group/pawsey0106/pbranson/repos/acolite/config/defaults.txt
 parameter_labels=config/parameter_labels.txt
 parameter_cf_attributes=config/parameter_cf_attributes.json
 
 ## EarthData
-EARTHDATA_u=
-EARTHDATA_p=
+EARTHDATA_u=pbranson
+EARTHDATA_p=iXcm336#$z*Y*pL
 
 ## Data directory
-data_dir=data
+data_dir=/group/pawsey0106/pbranson/repos/acolite/data
 
 ## atmospheric correction LUT data directory
-lut_dir=data/LUT
+lut_dir=/group/pawsey0106/ACOLITE_DATA/LUT
 
 ## DEM SRTM HGT files
-hgt_dir=data/SRTMGL3.003
+hgt_dir=/group/pawsey0106/ACOLITE_DATA/SRTMGL3.003
 
 ## MET files
-met_dir=data/MET
+met_dir=/group/pawsey0106/ACOLITE_DATA/MET
 
 ## SNAP directory
 snap_directory=/Applications/snap
 
 ## TACT support
-grid_dir=data/TACT/grid
+grid_dir=/group/pawsey0106/ACOLITE_DATA/TACT/grid
 
 ## libRadtran directory
 libradtran_dir=/Users/quinten/Documents/Software/LibRadtran/libRadtran-2.0.2

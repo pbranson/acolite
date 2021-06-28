@@ -11,7 +11,7 @@ extend_region=False
 ## new output settings
 output=None
 output_geolocation=True
-output_xy=False
+output_xy=True
 output_geometry=True
 output_rhorc=False
 
@@ -43,7 +43,7 @@ tact_map=True
 verbosity=5
 
 ## test cropped scenes for blackfill coverage
-blackfill_skip=True
+blackfill_skip=False
 blackfill_max=1.0
 blackfill_wave=1600
 
@@ -170,7 +170,7 @@ resolved_geometry=False
 resolved_geometry_write=False
 
 ## output of xy easting and northing
-xy_output=False
+xy_output=True
 
 ## gain settings
 gains=False

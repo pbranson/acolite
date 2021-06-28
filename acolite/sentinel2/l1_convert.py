@@ -112,7 +112,8 @@ def l1_convert(inputfile, output = None,
             print('Processing level {} not supported'.format(meta['PROCESSING_LEVEL']))
             continue
 
-        dtime = dateutil.parser.parse(grmeta['SENSING_TIME'])
+        # dtime = dateutil.parser.parse(grmeta['SENSING_TIME'])
+        dtime = dateutil.parser.parse(meta['PRODUCT_START_TIME'])
         doy = dtime.strftime('%j')
         se_distance = ac.shared.distance_se(doy)
         isodate = dtime.isoformat()
@@ -158,7 +159,7 @@ def l1_convert(inputfile, output = None,
             gatts['tile_code'] = '{}'.format(gatts['mgrs_tile'])
 
         stime = dateutil.parser.parse(gatts['isodate'])
-        oname = '{}_{}_{}'.format(gatts['sensor'], stime.strftime('%Y_%m_%d_%H_%M_%S'), gatts['tile_code'])
+        oname = '{}_{}_{}'.format(gatts['sensor'], stime.strftime('%Y%m%d_%H%M%S'), gatts['tile_code'])
         if vname != '': oname+='_{}'.format(vname)
 
         ## output file information
