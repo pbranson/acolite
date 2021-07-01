@@ -18,6 +18,8 @@ output_rhorc=False
 ## Sentinel-2 per pixel geometry
 geometry_type=grids_footprint
 geometry_res=60
+geometry_per_band=False
+geometry_fixed_footprint=False
 
 ## Sentinel-3 options
 smile_correction=True
@@ -101,7 +103,8 @@ dem_pressure_write=False
 sky_correction=True
 sky_correction_option=default
 sky_correction_lut=RSKY-202102
-wind=2
+wind=None
+wind_default=2
 
 ## glint correction
 glint_correction=False

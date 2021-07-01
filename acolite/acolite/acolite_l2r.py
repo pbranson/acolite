@@ -93,9 +93,10 @@ def acolite_l2r(gem,
         ## overwrite the defaults
         if ('ozone' in anc): gem.gatts['uoz'] = anc['ozone']['interp']/1000. ## convert from MET data
         if ('p_water' in anc): gem.gatts['uwv'] = anc['p_water']['interp']/10. ## convert from MET data
-        if ('z_wind' in anc) & ('m_wind' in anc):
+        if ('z_wind' in anc) & ('m_wind' in anc) & (setu['wind'] is None):
             gem.gatts['wind'] = ((anc['z_wind']['interp']**2) + (anc['m_wind']['interp']**2))**0.5
-        if ('press' in anc): gem.gatts['pressure'] = anc['press']['interp']
+        if ('press' in anc) & (setu['pressure'] is None):
+            gem.gatts['pressure'] = anc['press']['interp']
 
     ## dem pressure
     if setu['dem_pressure']:
@@ -118,11 +119,16 @@ def acolite_l2r(gem,
         dem_pressure = None
 
     ## set wind to wind range
+    if gem.gatts['wind'] is None: gem.gatts['wind'] = setu['wind_default']
     gem.gatts['wind'] = max(0.1, gem.gatts['wind'])
     gem.gatts['wind'] = min(20, gem.gatts['wind'])
 
     ## get mean average geometry
     geom_ds = ['sza', 'vza', 'raa', 'pressure', 'wind']
+    for ds in gem.datasets:
+        if ('raa_' in ds) or ('vza_' in ds):
+            gem.data(ds, store=True, return_data=False)
+            geom_ds.append(ds)
     for ds in geom_ds: gem.data(ds, store=True, return_data=False)
     geom_mean = {k: np.nanmean(gem.data(k)) if k in gem.datasets else gem.gatts[k] for k in geom_ds}
 
@@ -155,6 +161,7 @@ def acolite_l2r(gem,
 
     ## determine use of reverse lut rhot->aot
     use_revlut = False
+    per_pixel_geometry = False
     ## if path reflectance is tiled or resolved, use reverse lut
     #if setu['dsf_path_reflectance'] != 'fixed': use_revlut = True
     ## no need to use reverse lut if fixed geometry is used
@@ -166,8 +173,8 @@ def acolite_l2r(gem,
         else:
             tmp = gem.data(ds, store=True)
         if len(np.atleast_1d(gem.data(ds)))>1:
-            print(ds)
             use_revlut=True ## if any dataset more than 1 dimension use revlut
+            per_pixel_geometry = True
         gem.data_mem['{}_mean'.format(ds)] = np.asarray(np.nanmean(gem.data(ds))) ## also store tile mean
         gem.data_mem['{}_mean'.format(ds)].shape+=(1,1) ## make 1,1 dimensions
 
@@ -203,18 +210,22 @@ def acolite_l2r(gem,
                         gem.data_mem['{}_tiled'.format(ds)][ti, tj] = \
                             np.nanmean(gem.data(ds)[subti[0]:subti[1],subtj[0]:subtj[1]])
                 else: ## if fixed geometry
-                    gem.data_mem['{}_tiled'.format(ds)] = np.zeros((ni,nj), dtype=np.float32)+gem.data(ds)
+                    if per_pixel_geometry:
+                        gem.data_mem['{}_tiled'.format(ds)] = np.zeros((ni,nj), dtype=np.float32)+gem.data(ds)
+                    else:
+                        gem.data_mem['{}_tiled'.format(ds)] = 1.0 * gem.data(ds)
     ## end tiling
 
     if (not setu['resolved_geometry']) & (setu['dsf_path_reflectance'] != 'tiled'): use_revlut = False
+
     ## for ease of subsetting later, repeat single element datasets to the tile shape
-    if use_revlut:
-        for ds in geom_ds:
-            if len(np.atleast_1d(gem.data(ds)))!=1: continue
-            gem.data_mem[ds] = np.repeat(gem.data_mem[ds], gem.gatts['data_elements']).reshape(gem.gatts['data_dimensions'])
-    else:
-        ## if use revlut is False at this point, we don't have resolved geometry
-        setu['resolved_geometry'] = False
+    #if use_revlut:
+    #    for ds in geom_ds:
+    #        if len(np.atleast_1d(gem.data(ds)))!=1: continue
+    #        gem.data_mem[ds] = np.repeat(gem.data_mem[ds], gem.gatts['data_elements']).reshape(gem.gatts['data_dimensions'])
+    #else:
+    #    ## if use revlut is False at this point, we don't have resolved geometry
+    #    setu['resolved_geometry'] = False
     ## end determine revlut
 
     ## read LUTs
@@ -407,6 +418,14 @@ def acolite_l2r(gem,
                 if setu['dsf_path_reflectance'] in ['fixed', 'tiled']:
                     dsf_rhod[b] = band_data
 
+                ## use band specific geometry if available
+                gk_raa = '{}'.format(gk)
+                gk_vza = '{}'.format(gk)
+                if 'raa_{}'.format(gem.bands[b]['wave_name']) in gem.datasets:
+                    gk_raa = '_{}'.format(gem.bands[b]['wave_name'])+gk_raa
+                if 'vza_{}'.format(gem.bands[b]['wave_name']) in gem.datasets:
+                    gk_vza = '_{}'.format(gem.bands[b]['wave_name'])+gk_vza
+
                 ## compute aot
                 aot_band = {}
                 for li, lut in enumerate(luts):
@@ -416,8 +435,8 @@ def acolite_l2r(gem,
                     ## reverse lut interpolates rhot directly to aot
                     if use_revlut:
                         aot_band[lut][band_sub] = revl[lut]['rgi'][b]((gem.data_mem['pressure'+gk][band_sub],
-                                                                       gem.data_mem['raa'+gk][band_sub],
-                                                                       gem.data_mem['vza'+gk][band_sub],
+                                                                       gem.data_mem['raa'+gk_raa][band_sub],
+                                                                       gem.data_mem['vza'+gk_vza][band_sub],
                                                                        gem.data_mem['sza'+gk][band_sub],
                                                                        gem.data_mem['wind'+gk][band_sub],
                                                                        band_data[band_sub]))
@@ -436,8 +455,8 @@ def acolite_l2r(gem,
                                     tmp = lutdw[lut]['rgi']((gem.data_mem['pressure'+gk],
                                                              lutdw[lut]['ipd'][par],
                                                              lutdw[lut]['meta']['wave'],
-                                                             gem.data_mem['raa'+gk],
-                                                             gem.data_mem['vza'+gk],
+                                                             gem.data_mem['raa'+gk_raa],
+                                                             gem.data_mem['vza'+gk_vza],
                                                              gem.data_mem['sza'+gk],
                                                              gem.data_mem['wind'+gk], aot))
                                     rhot_aot.append(tmp.flatten())
@@ -448,8 +467,8 @@ def acolite_l2r(gem,
                         else:
                             tmp = lutdw[lut]['rgi'][b]((gem.data_mem['pressure'+gk],
                                                         lutdw[lut]['ipd'][par],
-                                                        gem.data_mem['raa'+gk],
-                                                        gem.data_mem['vza'+gk],
+                                                        gem.data_mem['raa'+gk_raa],
+                                                        gem.data_mem['vza'+gk_vza],
                                                         gem.data_mem['sza'+gk],
                                                         gem.data_mem['wind'+gk], lutdw[lut]['meta']['tau']))
                         tmp = tmp.flatten()
@@ -545,6 +564,15 @@ def acolite_l2r(gem,
                     rhop_f = np.zeros((aot_stack[lut]['b1'].shape[0],aot_stack[lut]['b1'].shape[1],2), dtype=np.float32) + np.nan
                     rhod_f = np.zeros((aot_stack[lut]['b1'].shape[0],aot_stack[lut]['b1'].shape[1],2), dtype=np.float32) + np.nan
                     for bi, b in enumerate(aot_bands):
+
+                        ## use band specific geometry if available
+                        gk_raa = '{}'.format(gk)
+                        gk_vza = '{}'.format(gk)
+                        if 'raa_{}'.format(gem.bands[b]['wave_name']) in gem.datasets:
+                            gk_raa = '_{}'.format(gem.bands[b]['wave_name'])+gk_raa
+                        if 'vza_{}'.format(gem.bands[b]['wave_name']) in gem.datasets:
+                            gk_vza = '_{}'.format(gem.bands[b]['wave_name'])+gk_vza
+
                         ## run through two best fitting bands
                         for ai, ab in enumerate(['b1', 'b2']):
                             aot_sub = np.where(aot_stack[lut][ab]==bi)
@@ -557,14 +585,14 @@ def acolite_l2r(gem,
                             if len(aot_sub[0]) > 0:
                                 if (use_revlut):
                                     xi = [gem.data_mem['pressure'+gk][aot_sub],
-                                                      gem.data_mem['raa'+gk][aot_sub],
-                                                      gem.data_mem['vza'+gk][aot_sub],
+                                                      gem.data_mem['raa'+gk_raa][aot_sub],
+                                                      gem.data_mem['vza'+gk_vza][aot_sub],
                                                       gem.data_mem['sza'+gk][aot_sub],
                                                       gem.data_mem['wind'+gk][aot_sub]]
                                 else:
                                     xi = [gem.data_mem['pressure'+gk],
-                                                      gem.data_mem['raa'+gk],
-                                                      gem.data_mem['vza'+gk],
+                                                      gem.data_mem['raa'+gk_raa],
+                                                      gem.data_mem['vza'+gk_vza],
                                                       gem.data_mem['sza'+gk],
                                                       gem.data_mem['wind'+gk]]
                                 if hyper:
@@ -639,19 +667,6 @@ def acolite_l2r(gem,
         ## read data
         exp_d1 = gem.data(gem.bands[exp_b1]['rhot_ds'])*1.0
         exp_d2 = gem.data(gem.bands[exp_b2]['rhot_ds'])*1.0
-
-        #if (use_revlut):
-        #    xi = [gem.data_mem['pressure'+gk],
-        #          gem.data_mem['raa'+gk],
-        #          gem.data_mem['vza'+gk],
-        #          gem.data_mem['sza'+gk],
-        #          gem.data_mem['wind'+gk]]
-        #else:
-        #    xi = [gem.data_mem['pressure'+gk],
-        #          gem.data_mem['raa'+gk],
-        #          gem.data_mem['vza'+gk],
-        #          gem.data_mem['sza'+gk],
-        #          gem.data_mem['wind'+gk]]
 
         ## use mean geometry
         xi = [gem.data_mem['pressure'+'_mean'][0][0],
@@ -808,6 +823,13 @@ def acolite_l2r(gem,
     ### store scene mask
     #scene_mask = np.zeros(gemo.gatts['data_dimensions'], dtype=np.uint8)
 
+    ## for ease of subsetting later, repeat single element datasets to the tile shape
+    if (use_revlut) & (ac_opt == 'dsf') & (setu['dsf_path_reflectance'] != 'tiled'):
+        for ds in geom_ds:
+            if len(np.atleast_1d(gem.data(ds)))!=1: continue
+            if verbosity > 2: print('Reshaping {} to {}x{}'.format(ds, gem.gatts['data_dimensions'][0], gem.gatts['data_dimensions'][1]))
+            gem.data_mem[ds] = np.repeat(gem.data_mem[ds], gem.gatts['data_elements']).reshape(gem.gatts['data_dimensions'])
+
     print('use_revlut', use_revlut)
     hyper_res = None
     ## compute surface reflectances
@@ -843,6 +865,15 @@ def acolite_l2r(gem,
             if (use_revlut) & (setu['dsf_path_reflectance'] == 'fixed'):
                 atm_shape = cur_data.shape
                 gk = ''
+
+            ## use band specific geometry if available
+            gk_raa = '{}'.format(gk)
+            gk_vza = '{}'.format(gk)
+            if 'raa_{}'.format(gem.bands[b]['wave_name']) in gem.datasets:
+                gk_raa = '_{}'.format(gem.bands[b]['wave_name'])+gk_raa
+            if 'vza_{}'.format(gem.bands[b]['wave_name']) in gem.datasets:
+                gk_vza = '_{}'.format(gem.bands[b]['wave_name'])+gk_vza
+
             romix = np.zeros(atm_shape, dtype=np.float32)+np.nan
             astot = np.zeros(atm_shape, dtype=np.float32)+np.nan
             dutott = np.zeros(atm_shape, dtype=np.float32)+np.nan
@@ -862,14 +893,14 @@ def acolite_l2r(gem,
 
                 if (use_revlut):
                     xi = [gem.data_mem['pressure'+gk][ls],
-                          gem.data_mem['raa'+gk][ls],
-                          gem.data_mem['vza'+gk][ls],
+                          gem.data_mem['raa'+gk_raa][ls],
+                          gem.data_mem['vza'+gk_vza][ls],
                           gem.data_mem['sza'+gk][ls],
                           gem.data_mem['wind'+gk][ls]]
                 else:
                     xi = [gem.data_mem['pressure'+gk],
-                          gem.data_mem['raa'+gk],
-                          gem.data_mem['vza'+gk],
+                          gem.data_mem['raa'+gk_raa],
+                          gem.data_mem['vza'+gk_vza],
                           gem.data_mem['sza'+gk],
                           gem.data_mem['wind'+gk]]
 
@@ -964,8 +995,8 @@ def acolite_l2r(gem,
             if (ac_opt == 'dsf'):
                 ## no subset
                 xi = [gem.data_mem['pressure'+gk],
-                      gem.data_mem['raa'+gk],
-                      gem.data_mem['vza'+gk],
+                      gem.data_mem['raa'+gk_raa],
+                      gem.data_mem['vza'+gk_vza],
                       gem.data_mem['sza'+gk],
                       gem.data_mem['wind'+gk]]
                 ## get Rayleigh parameters
